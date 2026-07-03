@@ -278,7 +278,7 @@ function DigestCard({ todayAggregates }: { todayAggregates: ReturnType<typeof co
   return (
     <div className="card ai-panel digest-sidebar">
       <h3>
-        End-of-day digest <span className="ai-tag">AI</span>
+        End-of-day digest <span className="ai-sparkle" aria-hidden="true">✦</span>
       </h3>
       <p className="ai-note">
         One click, one manager&apos;s report on today&apos;s trading — revenue, top sellers,

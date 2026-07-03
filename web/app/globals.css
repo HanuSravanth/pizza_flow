@@ -211,9 +211,21 @@ label { font-weight: 600; font-size: 13px; display: block; margin-bottom: 4px; }
 /* ---------- AI panels ---------- */
 .ai-panel { background: var(--amber-soft); border: 1px solid var(--amber); }
 .ai-panel h3 { display: flex; align-items: center; gap: 6px; }
-.ai-tag {
-  font-size: 10px; font-weight: 800; letter-spacing: 1px; color: #fff;
-  background: var(--amber); border-radius: 999px; padding: 2px 8px;
+/* Two-tone sparkle marking AI features: big gold star + small red companion. */
+.ai-sparkle {
+  position: relative; display: inline-block;
+  width: 20px; height: 18px; line-height: 1;
+  color: var(--amber); font-size: 16px; font-style: normal; font-weight: 400;
+  animation: sparkle-twinkle 2.4s ease-in-out infinite;
+}
+.ai-sparkle::after {
+  content: "✦"; position: absolute; top: -5px; right: 0;
+  font-size: 9px; color: var(--brand);
+  animation: sparkle-twinkle 2.4s ease-in-out infinite 1.2s;
+}
+@keyframes sparkle-twinkle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
 }
 .ai-input-row { display: flex; gap: 8px; margin-top: 8px; }
 .ai-input-row input { flex: 1; }
@@ -247,10 +259,10 @@ label { font-weight: 600; font-size: 13px; display: block; margin-bottom: 4px; }
 .orders-table td small { color: var(--muted); display: block; }
 .table-scroll { overflow-x: auto; }
 
-.chat-log { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; margin-bottom: 8px; }
-.chat-msg { border-radius: 10px; padding: 8px 12px; font-size: 13.5px; max-width: 92%; }
-.chat-q { background: var(--err-soft); align-self: flex-end; }
-.chat-a { background: #fff; border: 1px solid var(--line); align-self: flex-start; white-space: pre-wrap; }
+.chat-log { display: flex; flex-direction: column; gap: 8px; }
+.chat-msg { border-radius: 14px; padding: 9px 13px; font-size: 13.5px; max-width: 88%; }
+.chat-q { background: var(--brand); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+.chat-a { background: #fff; border: 1px solid var(--line); align-self: flex-start; white-space: pre-wrap; border-bottom-left-radius: 4px; }
 
 .digest-box { white-space: pre-wrap; font-size: 13.5px; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 10px; }
 
@@ -301,10 +313,69 @@ label { font-weight: 600; font-size: 13px; display: block; margin-bottom: 4px; }
 .chat-fab:hover { transform: scale(1.06); background: var(--brand-dark); }
 .chat-popup {
   position: fixed; bottom: 90px; right: 22px; z-index: 50;
-  width: min(360px, calc(100vw - 44px)); max-height: min(520px, calc(100vh - 140px));
-  display: flex; flex-direction: column; box-shadow: 0 10px 34px rgba(43, 29, 22, 0.24);
+  width: min(380px, calc(100vw - 44px)); height: min(540px, calc(100vh - 140px));
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+  box-shadow: 0 10px 34px rgba(43, 29, 22, 0.24);
+  animation: chat-popup-in 0.18s ease-out;
 }
-.chat-popup-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+@keyframes chat-popup-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.chat-popup-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 12px 14px; background: var(--brand); color: #fff; flex-shrink: 0;
+}
+.chat-popup-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.chat-popup-avatar {
+  width: 36px; height: 36px; border-radius: 999px; background: rgba(255, 255, 255, 0.16);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 19px; flex-shrink: 0;
+}
+.chat-popup-title strong { display: flex; align-items: center; gap: 6px; font-size: 14.5px; line-height: 1.2; }
+.chat-popup-title small { display: block; font-size: 11.5px; opacity: 0.85; }
+.chat-popup-head .ai-sparkle { color: #ffd25e; }
+.chat-popup-head .ai-sparkle::after { color: #ffb3ab; }
+.chat-close {
+  width: 30px; height: 30px; border-radius: 999px; border: none; cursor: pointer;
+  background: rgba(255, 255, 255, 0.14); color: #fff; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.12s;
+}
+.chat-close:hover { background: rgba(255, 255, 255, 0.28); }
+.chat-body { flex: 1; overflow-y: auto; padding: 14px; background: var(--cream); }
+.chat-empty p { font-size: 13.5px; color: var(--muted); margin-bottom: 10px; }
+.chat-suggest-row { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.chat-suggest {
+  border: 1.5px solid var(--amber); border-radius: 999px; background: #fff;
+  color: var(--ink); padding: 7px 13px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.chat-suggest:hover { background: var(--amber-soft); border-color: var(--brand); }
+.chat-input-bar {
+  display: flex; gap: 8px; align-items: center; padding: 10px 12px;
+  border-top: 1px solid var(--line); background: var(--card); flex-shrink: 0;
+}
+.chat-input-bar input { flex: 1; border-radius: 999px; padding: 9px 15px; font-size: 13.5px; }
+.chat-send {
+  width: 38px; height: 38px; border-radius: 999px; border: none; cursor: pointer;
+  background: var(--brand); color: #fff; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.12s;
+}
+.chat-send:hover:not(:disabled) { background: var(--brand-dark); }
+.chat-send:disabled { background: #c9b8ac; cursor: not-allowed; }
+.chat-typing { display: inline-flex; gap: 4px; align-items: center; padding: 12px; }
+.chat-typing span {
+  width: 7px; height: 7px; border-radius: 999px; background: var(--muted);
+  animation: typing-bounce 1.2s infinite;
+}
+.chat-typing span:nth-child(2) { animation-delay: 0.15s; }
+.chat-typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-bounce {
+  0%, 60%, 100% { transform: none; opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
 
 /* ---------- toggle switch (AI kill switch) ---------- */
 .ai-toggle-row { display: flex; gap: 14px; align-items: flex-start; }

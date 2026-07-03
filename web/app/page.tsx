@@ -192,14 +192,36 @@ function OrderFlow({
     setToppingIds([]);
   }
 
-  function addDraftLines(lines: CartLine[]) {
+  function applyAssistantDraft(lines: CartLine[], cartUpdates: CartUpdate[]) {
     const extra = lines.reduce((s, l) => s + l.quantity, 0);
-    const totalResult = validateTotalQuantity(bill.totalQuantity + extra);
-    if (!totalResult.ok) {
-      setBuilderError(totalResult.error);
-      return false;
+    if (extra > 0) {
+      const totalResult = validateTotalQuantity(bill.totalQuantity + extra);
+      if (!totalResult.ok) {
+        setBuilderError(totalResult.error);
+        return false;
+      }
     }
-    setCart((prev) => [...prev, ...lines]);
+    setCart((prev) => {
+      const next = [...prev];
+      for (const update of cartUpdates) {
+        const line = next[update.cartIndex];
+        if (!line) continue;
+        let toppings = line.toppings;
+        if (update.addToppingIds.length) {
+          const existingIds = new Set(toppings.map((t) => t.id));
+          const toAdd = update.addToppingIds
+            .map((id) => menu.toppings.find((t) => t.id === id))
+            .filter((t): t is MenuItem => t !== undefined && !existingIds.has(t.id));
+          toppings = [...toppings, ...toAdd];
+        }
+        if (update.removeToppingIds.length) {
+          const removeSet = new Set(update.removeToppingIds);
+          toppings = toppings.filter((t) => !removeSet.has(t.id));
+        }
+        next[update.cartIndex] = { ...line, toppings };
+      }
+      return [...next, ...lines];
+    });
     return true;
   }
 
@@ -274,7 +296,7 @@ function OrderFlow({
 
       <div className="order-grid">
         <div>
-          {aiEnabled && <AiAssistant menu={menu} onDraft={addDraftLines} />}
+          {aiEnabled && <AiAssistant menu={menu} cart={cart} onApply={applyAssistantDraft} />}
 
           <div className="card" style={{ marginTop: 16 }}>
             <h2>Customer details</h2>
@@ -497,7 +519,21 @@ function OrderFlow({
   );
 }
 
-function AiAssistant({ menu, onDraft }: { menu: Menu; onDraft: (lines: CartLine[]) => boolean }) {
+interface CartUpdate {
+  cartIndex: number;
+  addToppingIds: string[];
+  removeToppingIds: string[];
+}
+
+function AiAssistant({
+  menu,
+  cart,
+  onApply,
+}: {
+  menu: Menu;
+  cart: CartLine[];
+  onApply: (lines: CartLine[], cartUpdates: CartUpdate[]) => boolean;
+}) {
   const [message, setMessage] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -511,7 +547,16 @@ function AiAssistant({ menu, onDraft }: { menu: Menu; onDraft: (lines: CartLine[
       const response = await fetch("/api/ai/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, menu }),
+        body: JSON.stringify({
+          message: text,
+          menu,
+          cart: cart.map((l) => ({
+            baseId: l.base.id,
+            pizzaId: l.pizza.id,
+            toppingIds: l.toppings.map((t) => t.id),
+            quantity: l.quantity,
+          })),
+        }),
       });
       const payload = await response.json();
       if (!response.ok) {
@@ -519,7 +564,7 @@ function AiAssistant({ menu, onDraft }: { menu: Menu; onDraft: (lines: CartLine[
         return;
       }
 
-      // Re-validate everything the model proposed against the real menu.
+      // Re-validate everything the model proposed against the real menu (and cart).
       const lines: CartLine[] = [];
       for (const draft of payload.lines ?? []) {
         const base = menu.bases.find((b) => b.id === draft.baseId);
@@ -532,12 +577,31 @@ function AiAssistant({ menu, onDraft }: { menu: Menu; onDraft: (lines: CartLine[
         lines.push({ base, pizza, toppings, quantity: qtyResult.value });
       }
 
-      if (lines.length === 0) {
+      const cartUpdates: CartUpdate[] = [];
+      for (const update of payload.cartUpdates ?? []) {
+        const cartIndex = update?.cartIndex;
+        if (typeof cartIndex !== "number" || cartIndex < 0 || cartIndex >= cart.length) continue;
+        const addToppingIds = ((update.addToppingIds ?? []) as string[]).filter((id) =>
+          menu.toppings.some((t) => t.id === id)
+        );
+        const removeToppingIds = ((update.removeToppingIds ?? []) as string[]).filter((id) =>
+          menu.toppings.some((t) => t.id === id)
+        );
+        if (addToppingIds.length || removeToppingIds.length) {
+          cartUpdates.push({ cartIndex, addToppingIds, removeToppingIds });
+        }
+      }
+
+      if (lines.length === 0 && cartUpdates.length === 0) {
         setNote(payload.note || "I couldn't match that to the menu — please try the menu below.");
-      } else if (onDraft(lines)) {
+      } else if (onApply(lines, cartUpdates)) {
+        const parts: string[] = [];
+        if (lines.length) parts.push(`added ${lines.length} item${lines.length > 1 ? "s" : ""}`);
+        if (cartUpdates.length)
+          parts.push(`updated ${cartUpdates.length} item${cartUpdates.length > 1 ? "s" : ""} already in your cart`);
         setNote(
           (payload.note ? payload.note + " " : "") +
-            `Added ${lines.length} item${lines.length > 1 ? "s" : ""} to the cart — review it on the right.`
+            (parts.length ? `${parts.join(" and ")} — review it on the right.` : "")
         );
         setMessage("");
       }
@@ -551,7 +615,7 @@ function AiAssistant({ menu, onDraft }: { menu: Menu; onDraft: (lines: CartLine[
   return (
     <div className="card ai-panel">
       <h3>
-        Tell us what you feel like <span className="ai-tag">AI</span>
+        Tell us what you feel like <span className="ai-sparkle" aria-hidden="true">✦</span>
       </h3>
       <div className="ai-input-row">
         <input
@@ -624,7 +688,7 @@ function UpsellSuggestion({
   return (
     <div className="card ai-panel upsell-card">
       <div>
-        <span className="ai-tag">AI</span>{" "}
+        <span className="ai-sparkle" aria-hidden="true">✦</span>{" "}
         <strong>
           Add {suggestion.topping.name} for {formatPaise(suggestion.topping.pricePaise)}?
         </strong>
