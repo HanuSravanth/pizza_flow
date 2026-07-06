@@ -44,6 +44,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "orderId and fields are required." }, { status: 400 });
   }
 
+  // An admin "Close table" cancels the order out from under an in-progress
+  // customer session. Both callers of this route (confirmOrder's running-
+  // total refresh, finishAndPayOrder's payment write) must only ever mutate
+  // an order that is still 'placed' — otherwise a customer could keep
+  // confirming/paying against an order staff already cancelled.
+  const { data: current, error: statusError } = await admin
+    .from("orders")
+    .select("status")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (statusError) return NextResponse.json({ error: statusError.message }, { status: 500 });
+  if (!current || current.status !== "placed") {
+    return NextResponse.json(
+      {
+        error: "This table was closed by staff — please contact the waiter and start a new order.",
+        closed: true,
+      },
+      { status: 409 }
+    );
+  }
+
   const updateFields: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(fields)) {
     if (ALLOWED_FIELDS.has(key)) updateFields[key] = value;

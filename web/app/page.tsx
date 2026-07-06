@@ -20,6 +20,7 @@ import {
   submitOrderFeedback,
   isDemoMode,
   DEFAULT_OUTLET,
+  TableClosedError,
   type OutletSettings,
   type PromoCode,
 } from "@/lib/data";
@@ -237,6 +238,32 @@ function OrderFlow({
   const [confirmedCount, setConfirmedCount] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState("");
+  // Set if admin closes this table mid-session (e.g. the customer walked off) —
+  // the order is cancelled server-side, so the UI blocks itself rather than
+  // silently letting the customer keep confirming/paying into it.
+  const [tableClosed, setTableClosed] = useState(false);
+
+  // Poll occupancy so a staff-side "Close table" is noticed even if the
+  // customer never tries to submit anything (see also the server-side
+  // TableClosedError backstop in confirmOrderClick/finishAndPay below).
+  useEffect(() => {
+    if (receipt) return; // already paid — no need to keep checking
+    let cancelled = false;
+    async function check() {
+      try {
+        const occupied = await getOccupiedTables();
+        if (!cancelled && !occupied.includes(tableNumber)) setTableClosed(true);
+      } catch {
+        /* best-effort — a transient error shouldn't block ordering */
+      }
+    }
+    check();
+    const timer = setInterval(check, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [tableNumber, receipt]);
 
   const appliedPromo: AppliedPromo | null = appliedCode
     ? {
@@ -392,7 +419,8 @@ function OrderFlow({
       setOrderId(id);
       setConfirmedCount(cart.length);
     } catch (error) {
-      setConfirmError(error instanceof Error ? error.message : "The order could not be confirmed — please retry.");
+      if (error instanceof TableClosedError) setTableClosed(true);
+      else setConfirmError(error instanceof Error ? error.message : "The order could not be confirmed — please retry.");
     } finally {
       setConfirming(false);
     }
@@ -430,13 +458,15 @@ function OrderFlow({
       });
       setReceipt(order);
     } catch (error) {
-      setPlaceError(error instanceof Error ? error.message : "The order could not be saved — please retry.");
+      if (error instanceof TableClosedError) setTableClosed(true);
+      else setPlaceError(error instanceof Error ? error.message : "The order could not be saved — please retry.");
     } finally {
       setPlacing(false);
     }
   }
 
   if (receipt) return <Receipt order={receipt} outletName={outletName} onNew={onNewOrder} />;
+  if (tableClosed) return <TableClosedNotice tableNumber={tableNumber} onRestart={onNewOrder} />;
 
   return (
     <>
@@ -863,6 +893,22 @@ function OrderFlow({
         </div>
       </div>
     </>
+  );
+}
+
+function TableClosedNotice({ tableNumber, onRestart }: { tableNumber: number; onRestart: () => void }) {
+  return (
+    <div className="gate">
+      <div className="card gate-card">
+        <h1>Table {tableNumber} has been closed</h1>
+        <p className="page-sub">
+          Staff closed this table from the counter — please contact the waiter before continuing.
+        </p>
+        <button className="btn" style={{ width: "100%" }} onClick={onRestart}>
+          Start a new order
+        </button>
+      </div>
+    </div>
   );
 }
 

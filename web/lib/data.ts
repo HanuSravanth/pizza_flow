@@ -429,6 +429,19 @@ function saveDemoOrderRecords(records: DemoOrderRecord[]): void {
   localStorage.setItem(DEMO_ORDERS_KEY, JSON.stringify(records));
 }
 
+/**
+ * Thrown by confirmOrder/finishAndPayOrder when the order they're about to
+ * mutate is no longer 'placed' — i.e. admin "Close table" cancelled it out
+ * from under an in-progress customer session. The ordering page catches this
+ * specifically to show a full-screen "contact the waiter" notice instead of
+ * a normal retryable error.
+ */
+export class TableClosedError extends Error {
+  readonly closed = true as const;
+}
+
+const TABLE_CLOSED_MESSAGE = "This table was closed by staff — please contact the waiter and start a new order.";
+
 export async function confirmOrder(params: {
   orderId: string | null;
   customerName: string;
@@ -444,6 +457,7 @@ export async function confirmOrder(params: {
   if (isDemoMode) {
     const records = loadDemoOrderRecords();
     const existing = params.orderId ? records.find((o) => o.id === params.orderId) : undefined;
+    if (existing && existing.status !== "placed") throw new TableClosedError(TABLE_CLOSED_MESSAGE);
     if (existing) {
       existing.customerName = params.customerName;
       existing.phone = params.phone;
@@ -592,6 +606,7 @@ export async function finishAndPayOrder(params: {
   if (isDemoMode) {
     const records = loadDemoOrderRecords();
     const existing = records.find((o) => o.id === orderId);
+    if (existing && existing.status !== "placed") throw new TableClosedError(TABLE_CLOSED_MESSAGE);
     if (existing) {
       existing.paymentMode = params.paymentMode;
       existing.status = "paid";
@@ -638,8 +653,10 @@ async function updateOrderFields(orderId: string, fields: Record<string, unknown
     body: JSON.stringify({ orderId, fields }),
   });
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({}) as { error?: string });
-    throw new Error(payload.error || "Could not update the order.");
+    const payload = await response.json().catch(() => ({}) as { error?: string; closed?: boolean });
+    const message = payload.error || "Could not update the order.";
+    if (payload.closed) throw new TableClosedError(message);
+    throw new Error(message);
   }
 }
 

@@ -17,6 +17,7 @@ export default function TablesPage() {
   const [loadError, setLoadError] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [selected, setSelected] = useState<LiveTable | null>(null);
+  const [confirmingClose, setConfirmingClose] = useState(false);
   const [closing, setClosing] = useState(false);
   const [closeError, setCloseError] = useState("");
 
@@ -44,12 +45,25 @@ export default function TablesPage() {
     setCloseError("");
     const message = await closeTableAsAdmin(selected.tableNumber);
     setClosing(false);
+    setConfirmingClose(false);
     if (message) {
       setCloseError(message);
       return;
     }
     setSelected(null);
     refresh();
+  }
+
+  function selectTable(t: LiveTable) {
+    setSelected(t);
+    setConfirmingClose(false);
+    setCloseError("");
+  }
+
+  function dismissModal() {
+    setSelected(null);
+    setConfirmingClose(false);
+    setCloseError("");
   }
 
   if (loadError) return <div className="banner banner-error">Could not load tables: {loadError}</div>;
@@ -92,7 +106,7 @@ export default function TablesPage() {
             key={t.tableNumber}
             className={`table-cell ${t.occupied ? "occupied" : "available"}`}
             disabled={!t.occupied}
-            onClick={() => setSelected(t)}
+            onClick={() => selectTable(t)}
           >
             <span className="table-cell-number">Table {t.tableNumber}</span>
             <span className="table-cell-status">{t.occupied ? "Occupied" : "Available"}</span>
@@ -106,11 +120,11 @@ export default function TablesPage() {
       </div>
 
       {selected && (
-        <div className="modal-backdrop" onClick={() => setSelected(null)}>
+        <div className="modal-backdrop" onClick={dismissModal}>
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <h3>Table {selected.tableNumber}</h3>
-              <button className="modal-close" aria-label="Close" onClick={() => setSelected(null)}>
+              <button className="modal-close" aria-label="Close" onClick={dismissModal}>
                 ✕
               </button>
             </div>
@@ -141,14 +155,34 @@ export default function TablesPage() {
               <p className="page-sub">Seated — no order confirmed yet.</p>
             )}
             {closeError && <p className="error-text">{closeError}</p>}
-            <button
-              className="btn btn-secondary"
-              style={{ width: "100%", marginTop: 12 }}
-              disabled={closing}
-              onClick={closeTable}
-            >
-              {closing ? "Closing…" : "Close table"}
-            </button>
+            {confirmingClose ? (
+              <>
+                <p className="error-text" style={{ marginTop: 12 }}>
+                  This frees the table and cancels its unpaid order. Are you sure?
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ flex: 1 }}
+                    disabled={closing}
+                    onClick={() => setConfirmingClose(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button className="btn" style={{ flex: 1 }} disabled={closing} onClick={closeTable}>
+                    {closing ? "Closing…" : "Yes, close table"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                className="btn btn-secondary"
+                style={{ width: "100%", marginTop: 12 }}
+                onClick={() => setConfirmingClose(true)}
+              >
+                Close table
+              </button>
+            )}
           </div>
         </div>
       )}
