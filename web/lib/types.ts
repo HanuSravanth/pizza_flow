@@ -51,6 +51,31 @@ export interface Bill {
   totalQuantity: number;
 }
 
+// A still-open (unpaid) order, for the admin live-tables view — same line
+// shape as CompletedOrder but no paymentMode yet.
+export interface OpenOrder {
+  id: string;
+  customerName: string;
+  phone: string;
+  lines: {
+    baseName: string;
+    pizzaName: string;
+    toppingNames: string[];
+    quantity: number;
+    unitPricePaise: number;
+    lineTotalPaise: number;
+  }[];
+  totalPaise: number;
+}
+
+// One row of the admin live-tables grid.
+export interface LiveTable {
+  tableNumber: number;
+  occupied: boolean;
+  seatedAt: string | null; // ISO; null when not occupied
+  order: OpenOrder | null; // the table's running placed order, if any
+}
+
 export interface CompletedOrder {
   id: string;
   createdAt: string; // ISO

@@ -260,6 +260,62 @@ create or replace view best_seller_pizzas as
 
 grant select on best_seller_pizzas to anon, authenticated;
 
+-- ------------------------------------------------------- table sessions
+-- Seating record: a table becomes occupied the moment staff pick it at the
+-- gate (before any order exists), not when the first order is confirmed —
+-- so this is a separate record from `orders`. Freed automatically when the
+-- order is paid (finishAndPayOrder), or manually by admin "Close table" for
+-- an abandoned seat. The partial unique index is a hard DB-level guard
+-- against two devices seating the same table at once.
+create table if not exists table_sessions (
+  id uuid primary key default gen_random_uuid(),
+  table_number int not null check (table_number between 1 and 50),
+  status text not null default 'open' check (status in ('open', 'closed')),
+  started_at timestamptz not null default now(),
+  closed_at timestamptz
+);
+
+create unique index if not exists table_sessions_one_open_per_table
+  on table_sessions (table_number) where status = 'open';
+create index if not exists table_sessions_status_idx on table_sessions (status);
+
+alter table table_sessions enable row level security;
+
+-- Admin reads/writes directly (authenticated); the customer flow writes via
+-- the service-role server route (see /api/tables), which bypasses RLS —
+-- same reasoning as the orders "updatable while placed" policy above.
+drop policy if exists "sessions readable by admin" on table_sessions;
+create policy "sessions readable by admin" on table_sessions
+  for select to authenticated using (true);
+drop policy if exists "sessions editable by admin" on table_sessions;
+create policy "sessions editable by admin" on table_sessions
+  for all to authenticated using (true) with check (true);
+
+-- Public occupancy, owner-privileged like best_seller_pizzas above: exposes
+-- only which table numbers are currently seated, no customer data.
+create or replace view occupied_tables as
+  select distinct table_number from table_sessions where status = 'open';
+
+grant select on occupied_tables to anon, authenticated;
+
+-- Allow cancelling an order when admin closes an abandoned table. The
+-- inline CHECK from the original create table only allowed
+-- ('placed', 'paid'); replace it with a named, re-runnable one that also
+-- allows 'cancelled'.
+do $$
+declare c text;
+begin
+  for c in
+    select conname from pg_constraint
+    where conrelid = 'orders'::regclass and contype = 'c'
+      and pg_get_constraintdef(oid) ilike '%status%'
+  loop
+    execute format('alter table orders drop constraint %I', c);
+  end loop;
+end $$;
+alter table orders add constraint orders_status_check
+  check (status in ('placed', 'paid', 'cancelled'));
+
 -- Applied via a direct Postgres connection (db:setup), not Supabase's own
 -- migration UI, so PostgREST's schema/policy cache may not auto-refresh —
 -- ask it to reload explicitly so new columns/policies take effect immediately.

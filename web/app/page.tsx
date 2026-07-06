@@ -15,6 +15,8 @@ import {
   getEffectiveAiFeatures,
   getBestSellerPizzaIds,
   getActivePromoCodes,
+  getOccupiedTables,
+  openTableSession,
   submitOrderFeedback,
   isDemoMode,
   DEFAULT_OUTLET,
@@ -110,6 +112,41 @@ export default function OrderPage() {
 
 function TableGate({ outletName, onStart }: { outletName: string; onStart: (table: number) => void }) {
   const [table, setTable] = useState("");
+  const [occupiedTables, setOccupiedTables] = useState<number[]>([]);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    // Best-effort — an error here just means occupied tables won't show
+    // disabled; the seat attempt below still catches a real double-booking.
+    getOccupiedTables()
+      .then(setOccupiedTables)
+      .catch(() => {});
+  }, []);
+
+  async function start() {
+    if (!table) return;
+    const tableNum = parseInt(table, 10);
+    setStarting(true);
+    setError("");
+    try {
+      const result = await openTableSession(tableNum);
+      if (result.occupied) {
+        setError(`Table ${tableNum} was just taken by another customer — pick a different table.`);
+        setOccupiedTables((prev) => (prev.includes(tableNum) ? prev : [...prev, tableNum]));
+        setTable("");
+        return;
+      }
+      if (!result.ok) {
+        setError("Could not seat this table — please try again.");
+        return;
+      }
+      onStart(tableNum);
+    } finally {
+      setStarting(false);
+    }
+  }
+
   return (
     <div className="gate">
       <div className="card gate-card">
@@ -124,23 +161,23 @@ function TableGate({ outletName, onStart }: { outletName: string; onStart: (tabl
             id="table"
             className="select"
             value={table}
-            onChange={(e) => setTable(e.target.value)}
+            onChange={(e) => {
+              setTable(e.target.value);
+              setError("");
+            }}
           >
             <option value="">Select a table…</option>
             {Array.from({ length: TABLE_COUNT }, (_, i) => i + 1).map((n) => (
-              <option key={n} value={n}>
+              <option key={n} value={n} disabled={occupiedTables.includes(n)}>
                 Table {n}
+                {occupiedTables.includes(n) ? " — occupied" : ""}
               </option>
             ))}
           </select>
         </div>
-        <button
-          className="btn"
-          style={{ width: "100%" }}
-          disabled={!table}
-          onClick={() => onStart(parseInt(table, 10))}
-        >
-          {table ? `Start order for Table ${table}` : "Select a table to begin"}
+        {error && <p className="error-text">{error}</p>}
+        <button className="btn" style={{ width: "100%" }} disabled={!table || starting} onClick={start}>
+          {starting ? "Checking table…" : table ? `Start order for Table ${table}` : "Select a table to begin"}
         </button>
       </div>
     </div>

@@ -284,6 +284,36 @@ label { font-weight: 600; font-size: 13px; display: block; margin-bottom: 4px; }
   border-radius: 999px; padding: 4px 14px; letter-spacing: 0.4px; white-space: nowrap;
 }
 
+/* ---------- admin: live tables ---------- */
+.table-grid-head {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 10px; margin-bottom: 14px;
+}
+.table-grid-head-actions { display: flex; align-items: center; gap: 12px; }
+.table-legend { display: flex; gap: 16px; }
+.table-legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.table-legend-swatch { width: 12px; height: 12px; border-radius: 4px; display: inline-block; }
+.table-legend-swatch.available { background: var(--card); border: 1.5px solid var(--line); }
+.table-legend-swatch.occupied { background: var(--amber-soft); border: 1.5px solid var(--amber); }
+
+.table-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px;
+}
+.table-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: var(--card); border: 1.5px solid var(--line); border-radius: var(--radius);
+  padding: 16px 8px; cursor: default; font-family: inherit;
+}
+.table-cell.occupied {
+  background: var(--amber-soft); border-color: var(--amber); cursor: pointer;
+}
+.table-cell.occupied:hover { background: var(--err-soft); border-color: var(--brand); }
+.table-cell:disabled { cursor: default; }
+.table-cell-number { font-weight: 800; font-size: 15px; }
+.table-cell-status { font-size: 12px; color: var(--muted); }
+.table-cell.occupied .table-cell-status { color: var(--brand-dark); font-weight: 700; }
+.table-cell-detail { font-size: 12.5px; font-weight: 700; color: var(--ink); margin-top: 2px; }
+
 /* ---------- cart ---------- */
 .cart-line {
   display: flex; justify-content: space-between; gap: 8px;

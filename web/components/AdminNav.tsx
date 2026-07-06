@@ -28,6 +28,9 @@ export default function AdminNav({ onSignOut }: { onSignOut: () => void }) {
         <Link href="/admin" className={isActive("/admin") ? "active" : ""}>
           Dashboard
         </Link>
+        <Link href="/admin/tables" className={isActive("/admin/tables") ? "active" : ""}>
+          Tables
+        </Link>
         <Link href="/admin/menu" className={isActive("/admin/menu") ? "active" : ""}>
           Menu management
         </Link>

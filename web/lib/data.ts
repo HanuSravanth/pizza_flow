@@ -23,9 +23,20 @@ import {
 } from "./prompts";
 import { getSupabase, getSupabaseAdmin, isSupabaseConfigured } from "./supabase";
 import { generateUUID } from "./uuid";
-import type { CartLine, CompletedOrder, Menu, MenuCategory, MenuItem, PaymentMode } from "./types";
+import type {
+  CartLine,
+  CompletedOrder,
+  LiveTable,
+  Menu,
+  MenuCategory,
+  MenuItem,
+  OpenOrder,
+  PaymentMode,
+} from "./types";
+import { TABLE_COUNT } from "./types";
 
 const DEMO_ORDERS_KEY = "pizzaflow_demo_orders";
+const DEMO_TABLE_SESSIONS_KEY = "pizzaflow_demo_table_sessions";
 
 export const isDemoMode = !isSupabaseConfigured;
 
@@ -397,7 +408,7 @@ function lineToOrderLine(line: CartLine): CompletedOrder["lines"][number] {
 
 interface DemoOrderRecord extends Omit<CompletedOrder, "paymentMode"> {
   paymentMode: PaymentMode | null;
-  status: "placed" | "paid";
+  status: "placed" | "paid" | "cancelled";
 }
 
 /** Raw localStorage record store, including still-'placed' (unpaid) orders. */
@@ -592,6 +603,7 @@ export async function finishAndPayOrder(params: {
       existing.totalPaise = bill.totalPaise;
       saveDemoOrderRecords(records);
     }
+    await closeTableSession(params.tableNumber);
     return order;
   }
 
@@ -605,6 +617,7 @@ export async function finishAndPayOrder(params: {
     gst: paiseToRupees(bill.gstPaise),
     total: paiseToRupees(bill.totalPaise),
   });
+  await closeTableSession(params.tableNumber);
 
   return order;
 }
@@ -673,6 +686,200 @@ export async function getOrders(): Promise<CompletedOrder[]> {
     totalPaise: rupeesToPaise(row.total),
     paymentMode: row.payment_mode,
   }));
+}
+
+// ------------------------------------------------------- table sessions
+// Seating record, separate from `orders`: a table becomes occupied the
+// moment staff pick it at the gate (openTableSession), before any order
+// exists, and frees automatically when the order is paid (closeTableSession,
+// wired into finishAndPayOrder above) or manually via admin "Close table"
+// (closeTableAsAdmin) for an abandoned seat.
+
+interface DemoTableSession {
+  id: string;
+  tableNumber: number;
+  status: "open" | "closed";
+  startedAt: string;
+  closedAt: string | null;
+}
+
+function loadDemoTableSessions(): DemoTableSession[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(DEMO_TABLE_SESSIONS_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveDemoTableSessions(sessions: DemoTableSession[]): void {
+  localStorage.setItem(DEMO_TABLE_SESSIONS_KEY, JSON.stringify(sessions));
+}
+
+/** Table numbers currently seated — read by the customer gate to disable them. */
+export async function getOccupiedTables(): Promise<number[]> {
+  if (isDemoMode) {
+    return loadDemoTableSessions()
+      .filter((s) => s.status === "open")
+      .map((s) => s.tableNumber);
+  }
+  // Anon reads this via the owner-privileged `occupied_tables` view (like
+  // best_seller_pizzas) since anon has no SELECT policy on table_sessions.
+  const { data, error } = await getSupabase().from("occupied_tables").select("table_number");
+  if (error || !data) return []; // never blocks seating — worst case a race, still caught below
+  return data.map((row: { table_number: number }) => row.table_number);
+}
+
+/** Seats a table at the gate. `occupied: true` means someone else got there first. */
+export async function openTableSession(tableNumber: number): Promise<{ ok: boolean; occupied: boolean }> {
+  if (isDemoMode) {
+    const sessions = loadDemoTableSessions();
+    if (sessions.some((s) => s.tableNumber === tableNumber && s.status === "open")) {
+      return { ok: false, occupied: true };
+    }
+    sessions.push({
+      id: generateUUID(),
+      tableNumber,
+      status: "open",
+      startedAt: new Date().toISOString(),
+      closedAt: null,
+    });
+    saveDemoTableSessions(sessions);
+    return { ok: true, occupied: false };
+  }
+
+  // Routed through a service-role server route rather than the anon client
+  // directly — see /api/tables and the same reasoning on updateOrderFields.
+  const response = await fetch("/api/tables", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "open", tableNumber }),
+  });
+  if (!response.ok) return { ok: false, occupied: false };
+  const payload = await response.json();
+  return { ok: !payload.occupied, occupied: Boolean(payload.occupied) };
+}
+
+/** Frees a table's seating session on payment. Best-effort — never blocks checkout. */
+async function closeTableSession(tableNumber: number): Promise<void> {
+  if (isDemoMode) {
+    const sessions = loadDemoTableSessions();
+    const session = sessions.find((s) => s.tableNumber === tableNumber && s.status === "open");
+    if (session) {
+      session.status = "closed";
+      session.closedAt = new Date().toISOString();
+      saveDemoTableSessions(sessions);
+    }
+    return;
+  }
+  try {
+    await fetch("/api/tables", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "close", tableNumber }),
+    });
+  } catch {
+    // A stuck-open session can still be freed later via admin "Close table".
+  }
+}
+
+/** Admin live-tables grid: every table, seated or not, with its running order. */
+export async function getLiveTables(): Promise<LiveTable[]> {
+  const tableNumbers = Array.from({ length: TABLE_COUNT }, (_, i) => i + 1);
+
+  if (isDemoMode) {
+    const openSessions = loadDemoTableSessions().filter((s) => s.status === "open");
+    const placedOrders = loadDemoOrderRecords().filter((o) => o.status === "placed");
+    return tableNumbers.map((tableNumber) => {
+      const session = openSessions.find((s) => s.tableNumber === tableNumber);
+      const order = placedOrders.find((o) => o.tableNumber === tableNumber);
+      return {
+        tableNumber,
+        occupied: Boolean(session),
+        seatedAt: session?.startedAt ?? null,
+        order: order
+          ? { id: order.id, customerName: order.customerName, phone: order.phone, lines: order.lines, totalPaise: order.totalPaise }
+          : null,
+      };
+    });
+  }
+
+  const supabase = getSupabase();
+  const [{ data: sessions, error: sessionsError }, { data: orders, error: ordersError }] = await Promise.all([
+    supabase.from("table_sessions").select("table_number, started_at").eq("status", "open"),
+    supabase
+      .from("orders")
+      .select(
+        `id, table_number, customer_name, phone, total,
+         order_items ( base_name, pizza_name, quantity, unit_price,
+           order_item_toppings ( topping_name ) )`
+      )
+      .eq("status", "placed"),
+  ]);
+  if (sessionsError) throw dbError("Could not load table sessions", sessionsError);
+  if (ordersError) throw dbError("Could not load open orders", ordersError);
+
+  return tableNumbers.map((tableNumber) => {
+    const session = (sessions ?? []).find((s: any) => s.table_number === tableNumber);
+    const order = (orders ?? []).find((o: any) => o.table_number === tableNumber);
+    const openOrder: OpenOrder | null = order
+      ? {
+          id: order.id,
+          customerName: order.customer_name,
+          phone: order.phone,
+          lines: (order.order_items ?? []).map((item: any) => ({
+            baseName: item.base_name,
+            pizzaName: item.pizza_name,
+            toppingNames: (item.order_item_toppings ?? []).map((t: any) => t.topping_name),
+            quantity: item.quantity,
+            unitPricePaise: rupeesToPaise(item.unit_price),
+            lineTotalPaise: rupeesToPaise(item.unit_price) * item.quantity,
+          })),
+          totalPaise: rupeesToPaise(order.total),
+        }
+      : null;
+    return {
+      tableNumber,
+      occupied: Boolean(session),
+      seatedAt: session?.started_at ?? null,
+      order: openOrder,
+    };
+  });
+}
+
+/** Admin "Close table": frees an abandoned seat and cancels its unpaid order, if any. */
+export async function closeTableAsAdmin(tableNumber: number): Promise<string | null> {
+  if (isDemoMode) {
+    const sessions = loadDemoTableSessions();
+    const session = sessions.find((s) => s.tableNumber === tableNumber && s.status === "open");
+    if (session) {
+      session.status = "closed";
+      session.closedAt = new Date().toISOString();
+      saveDemoTableSessions(sessions);
+    }
+    const orders = loadDemoOrderRecords();
+    const order = orders.find((o) => o.tableNumber === tableNumber && o.status === "placed");
+    if (order) {
+      order.status = "cancelled";
+      saveDemoOrderRecords(orders);
+    }
+    return null;
+  }
+
+  const supabase = getSupabase();
+  const { error: sessionError } = await supabase
+    .from("table_sessions")
+    .update({ status: "closed", closed_at: new Date().toISOString() })
+    .eq("table_number", tableNumber)
+    .eq("status", "open");
+  if (sessionError) return sessionError.message;
+
+  const { error: orderError } = await supabase
+    .from("orders")
+    .update({ status: "cancelled" })
+    .eq("table_number", tableNumber)
+    .eq("status", "placed");
+  return orderError ? orderError.message : null;
 }
 
 // ------------------------------------------------------------- feedback
