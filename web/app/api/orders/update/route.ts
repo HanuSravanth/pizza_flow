@@ -20,6 +20,8 @@ const ALLOWED_FIELDS = new Set([
   "total",
   "payment_mode",
   "status",
+  "offer_tier",
+  "offer_incentive",
 ]);
 
 export async function POST(request: Request) {

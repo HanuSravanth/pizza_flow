@@ -71,6 +71,21 @@ export default function OutletSettingsPage() {
             }}
           />
         </div>
+        <div className="field">
+          <label htmlFor="outlet-table-count">Dine-In Table Count (1-50)</label>
+          <input
+            id="outlet-table-count"
+            type="number"
+            min={1}
+            max={50}
+            value={outlet.tableCount || 15}
+            onChange={(e) => {
+              const val = Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 1));
+              setOutlet({ ...outlet, tableCount: val });
+              setStatus("idle");
+            }}
+          />
+        </div>
         {error && <p className="error-text">{error}</p>}
         <button className="btn" onClick={save} disabled={status === "saving"}>
           {status === "saving" ? "Saving…" : status === "saved" ? "Saved ✓" : "Save"}

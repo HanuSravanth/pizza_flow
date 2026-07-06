@@ -64,18 +64,13 @@ create table if not exists orders (
   total numeric(10, 2) not null check (total >= 0),
   payment_mode text check (payment_mode in ('Cash', 'Card', 'UPI')),
   table_number int check (table_number between 1 and 50),
-  status text not null default 'placed' check (status in ('placed', 'paid'))
+  status text not null default 'placed' check (status in ('placed', 'paid')),
+  offer_tier text check (offer_tier is null or length(offer_tier) between 1 and 50),
+  offer_incentive text check (offer_incentive is null or length(offer_incentive) between 1 and 150)
 );
 
 -- Upgrade path for databases created before dine-in table tracking existed.
 alter table orders add column if not exists table_number int check (table_number between 1 and 50);
-
--- Upgrade path for databases created before promo codes existed. promo_code is a
--- snapshot of the code redeemed (not a foreign key) so history survives even if
--- the promo_codes row is later edited; promo_discount is the slice of `discount`
--- that came from the code, so bulk vs. promo savings can be told apart later.
-alter table orders add column if not exists promo_code text;
-alter table orders add column if not exists promo_discount numeric(10, 2) not null default 0 check (promo_discount >= 0);
 
 -- Upgrade path for databases created before the confirm/pay lifecycle existed.
 -- Default 'paid' here (unlike the fresh-create default above) because it
@@ -84,6 +79,10 @@ alter table orders add column if not exists promo_discount numeric(10, 2) not nu
 -- explicitly, so this default only ever applies to pre-existing rows.
 alter table orders add column if not exists status text not null default 'paid' check (status in ('placed', 'paid'));
 alter table orders alter column payment_mode drop not null;
+
+-- Upgrade path for databases created before loyalty rewards existed on orders.
+alter table orders add column if not exists offer_tier text check (offer_tier is null or length(offer_tier) between 1 and 50);
+alter table orders add column if not exists offer_incentive text check (offer_incentive is null or length(offer_incentive) between 1 and 150);
 
 create index if not exists orders_created_at_idx on orders (created_at desc);
 
@@ -136,39 +135,6 @@ drop policy if exists "feedback readable by admin" on order_feedback;
 create policy "feedback readable by admin" on order_feedback
   for select to authenticated using (true);
 
--- ------------------------------------------------------------- promo codes
--- Admin → Promos: a code the customer types in at checkout for an owner-picked
--- discount, live only between starts_at and ends_at (checked live, client-side —
--- no cron needed: a code simply stops being offered once its window ends).
--- discount_value is a percent (1-50) for 'percent' codes and unused for 'topping'
--- codes, which instead waive a topping on featured_item_id. Rows are never
--- deleted so `orders.promo_code` history and revenue/discount stats stay meaningful.
-create table if not exists promo_codes (
-  id uuid primary key default gen_random_uuid(),
-  code text not null unique check (code ~ '^[A-Z0-9]{3,12}$'),
-  headline text not null check (length(headline) <= 80),
-  message text not null check (length(message) <= 600),
-  discount_type text not null check (discount_type in ('percent', 'topping')),
-  discount_value numeric(5, 2) not null default 0 check (discount_value >= 0),
-  featured_item_id uuid references menu_items (id),
-  starts_at timestamptz not null,
-  ends_at timestamptz not null check (ends_at > starts_at),
-  created_at timestamptz not null default now()
-);
-
-create index if not exists promo_codes_window_idx on promo_codes (starts_at, ends_at);
-
-alter table promo_codes enable row level security;
-
--- Readable by everyone: the ordering page must look up/validate a code a
--- customer types in, and list currently-active codes, without an admin session.
-drop policy if exists "promo codes readable by all" on promo_codes;
-create policy "promo codes readable by all" on promo_codes
-  for select using (true);
-drop policy if exists "promo codes editable by admin" on promo_codes;
-create policy "promo codes editable by admin" on promo_codes
-  for all to authenticated using (true) with check (true);
-
 -- ---------------------------------------------------------------- settings
 -- Outlet-level configuration editable from the admin console (e.g. the
 -- outlet's display name). Key/value keeps it schema-stable as settings grow.
@@ -178,12 +144,62 @@ create table if not exists settings (
   updated_at timestamptz not null default now()
 );
 
+-- -------------------------------------------------------- dine in tables
+create table if not exists dine_in_tables (
+  table_number int primary key check (table_number between 1 and 50),
+  capacity int not null default 4 check (capacity > 0),
+  status text not null default 'vacant' check (status in ('vacant', 'occupied', 'reserved')),
+  customer_name text check (customer_name is null or length(customer_name) between 1 and 50),
+  group_size int check (group_size is null or group_size > 0),
+  seated_at timestamptz,
+  offer_tier text check (offer_tier is null or length(offer_tier) between 1 and 50),
+  offer_incentive text check (offer_incentive is null or length(offer_incentive) between 1 and 150),
+  created_at timestamptz not null default now()
+);
+
+-- ------------------------------------------------------------- waitlist
+create table if not exists waitlist (
+  id uuid primary key default gen_random_uuid(),
+  customer_name text not null check (length(customer_name) between 2 and 40),
+  phone text not null check (phone ~ '^[6-9][0-9]{9}$'),
+  group_size int not null check (group_size > 0),
+  joined_at timestamptz not null default now(),
+  time_offset_minutes int not null default 0,
+  status text not null default 'waiting' check (status in ('waiting', 'seated', 'cancelled')),
+  seated_table_number int check (seated_table_number between 1 and 50),
+  seated_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
 -- ---------------------------------------------------------------- RLS
 alter table menu_items enable row level security;
 alter table orders enable row level security;
 alter table order_items enable row level security;
 alter table order_item_toppings enable row level security;
 alter table settings enable row level security;
+alter table dine_in_tables enable row level security;
+alter table waitlist enable row level security;
+
+-- Seating & Waitlist Policies
+drop policy if exists "admin do everything on dine_in_tables" on dine_in_tables;
+create policy "admin do everything on dine_in_tables" on dine_in_tables
+  for all to authenticated using (true) with check (true);
+
+drop policy if exists "admin do everything on waitlist" on waitlist;
+create policy "admin do everything on waitlist" on waitlist
+  for all to authenticated using (true) with check (true);
+
+drop policy if exists "anyone can select dine_in_tables" on dine_in_tables;
+create policy "anyone can select dine_in_tables" on dine_in_tables
+  for select using (true);
+
+drop policy if exists "anyone can select waitlist" on waitlist;
+create policy "anyone can select waitlist" on waitlist
+  for select using (true);
+
+drop policy if exists "anyone can insert waitlist" on waitlist;
+create policy "anyone can insert waitlist" on waitlist
+  for insert with check (true);
 
 -- Settings: everyone can read the public settings (the ordering page shows the
 -- outlet name), EXCEPT `secret_`-prefixed rows (e.g. the OpenRouter API key),

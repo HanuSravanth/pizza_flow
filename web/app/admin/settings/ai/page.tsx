@@ -2,7 +2,7 @@
 
 // AI settings — three tabs:
 //   1. Features   — the master AI kill switch plus a per-feature sub-toggle for
-//      each AI feature (the list comes from the AI_FEATURES registry).
+//      each of the four AI features.
 //   2. Model      — which OpenRouter model every AI feature uses.
 //   3. Customise  — optional per-feature "custom instructions". The real system
 //      prompts stay hidden on the server; this only edits the short owner text
@@ -133,7 +133,7 @@ function FeaturesTab() {
             <p className="page-sub" style={{ margin: 0 }}>
               {enabled
                 ? "The master switch is on. Use the per-feature toggles below to fine-tune which features are live."
-                : "All AI panels are hidden from customers and admin. Every /api/ai/* call is also rejected server-side, even if called directly."}
+                : "All four AI panels are hidden from customers and admin. Every /api/ai/* call is also rejected server-side, even if called directly."}
             </p>
           </div>
         </div>

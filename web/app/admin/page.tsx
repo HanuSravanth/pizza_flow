@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { computeAggregates, computeRepeatCustomers, todaysOrders } from "@/lib/analytics";
 import { formatDateTime, formatPaise, paiseToRupees } from "@/lib/format";
-import { getEffectiveAiFeatures, getOrders, isDemoMode } from "@/lib/data";
+import { getEffectiveAiFeatures, getOrders, isDemoMode, getOutletSettings } from "@/lib/data";
 import { PAYMENT_MODES, type CompletedOrder, type PaymentMode } from "@/lib/types";
 import { AdminDailyChart, type DailyPoint } from "@/components/AdminDailyChart";
 import { requestDigestInChat } from "@/lib/insightsChatBus";
@@ -78,6 +78,9 @@ export default function AdminPage() {
   const [repeatPage, setRepeatPage] = useState(0);
   const [digestEnabled, setDigestEnabled] = useState(true);
 
+  // Dynamic role & outlet configuration
+  const [outletLocation, setOutletLocation] = useState("New Ashok Nagar, Delhi");
+
   // The period dropdown is the one control for both the stat cards and the
   // orders table below: picking a preset sets the date range; editing a date
   // field directly switches the dropdown to "Custom range" so the two stay in sync.
@@ -103,6 +106,11 @@ export default function AdminPage() {
     getEffectiveAiFeatures()
       .then((features) => setDigestEnabled(features.digest))
       .catch(() => {});
+    getOutletSettings()
+      .then((settings) => {
+        setOutletLocation(settings.location);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -121,14 +129,13 @@ export default function AdminPage() {
   // the entire history.
   const dailySeries = useMemo<DailyPoint[]>(() => {
     if (!orders) return [];
-    const byDate = new Map<string, { pizzas: number; revenue: number; discount: number; promoDiscount: number }>();
+    const byDate = new Map<string, { pizzas: number; revenue: number; discount: number }>();
     for (const order of orders) {
       const date = localDateKey(new Date(order.createdAt));
-      const entry = byDate.get(date) ?? { pizzas: 0, revenue: 0, discount: 0, promoDiscount: 0 };
+      const entry = byDate.get(date) ?? { pizzas: 0, revenue: 0, discount: 0 };
       entry.pizzas += order.lines.reduce((sum, line) => sum + line.quantity, 0);
       entry.revenue += paiseToRupees(order.totalPaise);
       entry.discount += paiseToRupees(order.discountPaise);
-      entry.promoDiscount += paiseToRupees(order.promoDiscountPaise);
       byDate.set(date, entry);
     }
 
@@ -147,7 +154,7 @@ export default function AdminPage() {
     const series: DailyPoint[] = [];
     for (const d = new Date(fromDate); d <= toDate; d.setDate(d.getDate() + 1)) {
       const key = localDateKey(d);
-      const entry = byDate.get(key) ?? { pizzas: 0, revenue: 0, discount: 0, promoDiscount: 0 };
+      const entry = byDate.get(key) ?? { pizzas: 0, revenue: 0, discount: 0 };
       series.push({ date: key, ...entry });
     }
     return series;
@@ -190,7 +197,7 @@ export default function AdminPage() {
 
   return (
     <>
-      <h1>Admin dashboard</h1>
+      <h1>Admin dashboard – {outletLocation}</h1>
       <p className="page-sub">Every order, every rupee — live from the database.</p>
       {isDemoMode && (
         <div className="banner banner-demo">

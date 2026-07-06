@@ -2,13 +2,14 @@
 // every AI call goes browser -> our API route -> OpenRouter, never direct.
 
 import { DEFAULT_MODEL } from "./aiCatalog";
+import { GoogleGenAI } from "@google/genai";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 export class AiUnavailableError extends Error {}
 
 export function isAiConfigured(): boolean {
-  return Boolean(process.env.OPENROUTER_API_KEY);
+  return Boolean(process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY);
 }
 
 export async function chatCompletion(params: {
@@ -24,8 +25,40 @@ export async function chatCompletion(params: {
   apiKey?: string;
 }): Promise<string> {
   const apiKey = params.apiKey || process.env.OPENROUTER_API_KEY;
+
+  if (!apiKey && process.env.GEMINI_API_KEY) {
+    try {
+      const ai = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY,
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build",
+          },
+        },
+      });
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: params.user,
+        config: {
+          systemInstruction: params.system,
+          responseMimeType: params.jsonMode ? "application/json" : "text/plain",
+        },
+      });
+
+      const content = response.text;
+      if (typeof content !== "string" || !content.trim()) {
+        throw new AiUnavailableError("Gemini returned an empty response");
+      }
+      return content;
+    } catch (err: any) {
+      console.error("Gemini API error:", err);
+      throw new AiUnavailableError(`Gemini API error: ${err?.message || err}`);
+    }
+  }
+
   if (!apiKey) {
-    throw new AiUnavailableError("No OpenRouter API key is configured");
+    throw new AiUnavailableError("No OpenRouter API key or Gemini API key is configured");
   }
 
   const response = await fetch(OPENROUTER_URL, {

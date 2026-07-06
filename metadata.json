@@ -1,0 +1,6 @@
+{
+  "name": "Pizza Flow",
+  "description": "SliceMatic pizza ordering system featuring an interactive customer menu, table management, live bill calculation, and custom admin dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

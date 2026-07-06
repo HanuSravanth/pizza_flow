@@ -1,4 +1,4 @@
-// System prompts for all AI features — documented verbatim in the README.
+// System prompts for all four AI features — documented verbatim in the README.
 // Design principles:
 //   1. The model NEVER invents menu items, prices, or numbers — it only works
 //      with data we inject into the prompt.
@@ -76,65 +76,14 @@ Rules:
 TODAY'S DATA:
 {{AGGREGATES}}`;
 
-export const PROMO_SYSTEM_PROMPT = `You write a short in-app banner announcement shown on the ordering screen at SliceMatic, a pizza outlet in New Ashok Nagar, Delhi. It is NOT a WhatsApp message — nobody sends it anywhere, it just displays on the page. Respond with valid JSON and nothing else.
-
-Rules:
-- Use ONLY the menu items, prices and sales facts provided below. NEVER invent items, prices, discounts or claims.
-- DISCOUNT below is the exact, only discount you may describe. Restate it faithfully — never invent a different number, percentage or item, and never add a second discount.
-- CODE below is the exact promo code the customer must enter at checkout to redeem the discount. Your "message" MUST include this code verbatim (e.g. "Use code CODE at checkout").
-- Feature 1-2 menu items that fit the occasion when relevant. If the occasion is vegetarian-leaning, feature only veg items.
-- Warm, friendly Hinglish is welcome. Max 40 words in "message" — this is a short on-screen banner, not a chat message. No emoji spam (at most 1).
-- No false urgency, no "limited stock", no delivery-time promises.
-- "whyThisWorks" is one plain sentence for the owner citing the specific sales fact(s) behind your item choice.
-
-Respond with JSON in this exact shape:
-{
-  "headline": "one short line, max 8 words",
-  "message": "the on-screen banner text, must include the code",
-  "featuredItems": ["exact item name(s) from the menu, or []"],
-  "whyThisWorks": "one sentence for the owner"
-}
-
-OCCASION: {{OCCASION}}
-DISCOUNT: {{DISCOUNT}}
-CODE: {{CODE}}
-
-MENU PIZZAS (name | price in INR | veg/non-veg):
-{{MENU}}
-
-SALES FACTS (computed from the orders database):
-{{FACTS}}`;
-
-export const FEEDBACK_SYSTEM_PROMPT = `You analyse customer feedback for the owner of SliceMatic, a pizza outlet in Delhi. You are given recent feedback entries, each with a numeric index. Group them into recurring themes so the owner knows what to fix and what is working. Respond with valid JSON and nothing else.
-
-Rules:
-- Base every theme ONLY on the entries provided. "entryIndexes" must list the indexes of the entries that genuinely support the theme — the app recounts and quotes them, so a wrong index is immediately visible.
-- Never state counts, percentages or averages in your text; the app computes those from your indexes.
-- Themes must be specific and actionable ("Pizzas arriving cold on weekend evenings"), not vague ("service issues"). Use the day/time fields to spot patterns.
-- "rootCause" is your best operational hypothesis, phrased as a hypothesis. "suggestedAction" is one concrete, low-cost step a small outlet can take this week.
-- This analysis is for the owner only — nothing here is sent to any customer. Do not draft a reply to anyone.
-- At most 5 themes, most serious first. If the entries are too few or too thin to cluster, return an empty "themes" list and explain in "note".
-
-Respond with JSON in this exact shape:
-{
-  "themes": [ { "title": "...", "sentiment": "negative" | "positive" | "mixed", "entryIndexes": [0, 3], "rootCause": "...", "suggestedAction": "..." } ],
-  "note": "one sentence of overall context, or why there are no themes"
-}
-
-RATING STATS:
-{{STATS}}
-
-FEEDBACK ENTRIES:
-{{ENTRIES}}`;
-
 // ---------------------------------------------------------------- registry
-// A single source of truth for the AI features, used by the admin
+// A single source of truth for the four AI features, used by the admin
 // "AI settings" screen (per-feature toggles + prompt editor) and by the
 // data layer to key its settings rows. `placeholders` are the {{TOKENS}} the
 // route substitutes at request time — the prompt editor refuses to save an
 // override that drops one, so an admin cannot accidentally break a feature.
 
-export const AI_FEATURES = ["assistant", "upsell", "insights", "digest", "promo", "feedback"] as const;
+export const AI_FEATURES = ["assistant", "upsell", "insights", "digest"] as const;
 export type AiFeature = (typeof AI_FEATURES)[number];
 
 export const DEFAULT_PROMPTS: Record<AiFeature, string> = {
@@ -142,8 +91,6 @@ export const DEFAULT_PROMPTS: Record<AiFeature, string> = {
   upsell: UPSELL_SYSTEM_PROMPT,
   insights: INSIGHTS_SYSTEM_PROMPT,
   digest: DIGEST_SYSTEM_PROMPT,
-  promo: PROMO_SYSTEM_PROMPT,
-  feedback: FEEDBACK_SYSTEM_PROMPT,
 };
 
 export interface AiFeatureMeta {
@@ -201,28 +148,6 @@ export const FEATURE_META: Record<AiFeature, AiFeatureMeta> = {
     examples: [
       "Open with a one-line motivational note for the team.",
       "Keep it even shorter — aim for under 100 words.",
-    ],
-  },
-  promo: {
-    label: "Festival promo planner",
-    blurb: "Admin → Promos — writes the headline and message for an in-app discount banner, grounded in your sales data.",
-    placeholders: ["{{OCCASION}}", "{{DISCOUNT}}", "{{CODE}}", "{{MENU}}", "{{FACTS}}"],
-    summary:
-      "Writes a short on-screen banner for an occasion and discount you pick, featuring real menu items chosen from your actual best sellers, slow movers and veg/non-veg mix. It can only describe the exact discount and code you set up — it never invents a different discount, item or price.",
-    examples: [
-      "Write the message in simple Hindi.",
-      "Mention that we are a family-run outlet when it fits.",
-    ],
-  },
-  feedback: {
-    label: "Feedback analyst",
-    blurb: "Admin → Ratings — groups customer feedback into themes with likely root causes, for your eyes only.",
-    placeholders: ["{{STATS}}", "{{ENTRIES}}"],
-    summary:
-      "Reads recent customer feedback and groups it into recurring themes, each with a likely root cause and one concrete fix. Nothing is sent to any customer — it's analysis for you. Counts and quotes are recomputed by the app from the actual entries it cites, so a theme can't claim evidence that isn't there.",
-    examples: [
-      "Prioritise anything about food hygiene above everything else.",
-      "Focus mainly on themes from the last two weeks.",
     ],
   },
 };

@@ -37,14 +37,11 @@ export const PAYMENT_MODES: PaymentMode[] = ["Cash", "Card", "UPI"];
 
 // Dine-in tables at the outlet. The waiter picks one before handing the
 // tablet to the customer; the customer cannot change it.
-export const TABLE_COUNT = 12;
+export const TABLE_COUNT = 15;
 
 export interface Bill {
   subtotalPaise: number;
-  discountPaise: number; // bulkDiscountPaise + promoDiscountPaise
-  bulkDiscountPaise: number; // 0 when total quantity < 5
-  promoDiscountPaise: number; // 0 unless a promo code is applied
-  promoCode: string | null;
+  discountPaise: number; // 0 when total quantity < 5
   taxablePaise: number; // subtotal - discount
   gstPaise: number; // 18% of taxable
   totalPaise: number;
@@ -68,9 +65,10 @@ export interface CompletedOrder {
   }[];
   subtotalPaise: number;
   discountPaise: number;
-  promoDiscountPaise: number; // portion of discountPaise attributable to a promo code (0 if none)
-  promoCode: string | null;
   gstPaise: number;
   totalPaise: number;
   paymentMode: PaymentMode;
+  offerTier?: string | null;
+  offerIncentive?: string | null;
+  appliedPromoCode?: string | null;
 }

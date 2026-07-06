@@ -11,8 +11,7 @@ export interface DailyPoint {
   date: string; // "2026-07-03"
   pizzas: number;
   revenue: number; // rupees
-  discount: number; // rupees, total (bulk + promo)
-  promoDiscount: number; // rupees, the slice of `discount` given via a promo code
+  discount: number; // rupees
 }
 
 const HEIGHT = 220;
@@ -146,7 +145,6 @@ export function AdminDailyChart({ data }: { data: DailyPoint[] }) {
               const gap = 2;
               const rh = scaleY(d.revenue);
               const dh = scaleY(d.discount);
-              const ph = scaleY(Math.min(d.promoDiscount, d.discount));
               return (
                 <g key={d.date}>
                   {hit}
@@ -158,15 +156,6 @@ export function AdminDailyChart({ data }: { data: DailyPoint[] }) {
                     d={roundedTopPath(centerX + gap / 2, baseY - dh, barW, dh, 4)}
                     className={hover === i ? "bar bar-amber bar-hover" : "bar bar-amber"}
                   />
-                  {ph > 0 && (
-                    <rect
-                      x={centerX + gap / 2}
-                      y={baseY - dh}
-                      width={barW}
-                      height={ph}
-                      className={hover === i ? "bar bar-promo bar-hover" : "bar bar-promo"}
-                    />
-                  )}
                 </g>
               );
             })}
@@ -212,12 +201,6 @@ export function AdminDailyChart({ data }: { data: DailyPoint[] }) {
                     <span className="dot dot-amber" /> Discount{" "}
                     {formatPaise(Math.round(data[hover].discount * 100))}
                   </div>
-                  {data[hover].promoDiscount > 0 && (
-                    <div>
-                      <span className="dot dot-promo" /> incl. promo code{" "}
-                      {formatPaise(Math.round(data[hover].promoDiscount * 100))}
-                    </div>
-                  )}
                 </>
               )}
             </div>
@@ -232,9 +215,6 @@ export function AdminDailyChart({ data }: { data: DailyPoint[] }) {
           </span>
           <span>
             <span className="dot dot-amber" /> Discount
-          </span>
-          <span>
-            <span className="dot dot-promo" /> incl. promo code
           </span>
         </div>
       )}

@@ -8,7 +8,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
-export default function AdminNav({ onSignOut }: { onSignOut: () => void }) {
+interface AdminNavProps {
+  activeRole: "admin" | "manager";
+  onRoleChange: (newRole: "admin" | "manager") => void;
+  onSignOut: () => void;
+}
+
+export default function AdminNav({ activeRole, onRoleChange, onSignOut }: AdminNavProps) {
   const pathname = usePathname();
   const isActive = (href: string) => pathname === href;
   const settingsRef = useRef<HTMLDetailsElement>(null);
@@ -23,50 +29,78 @@ export default function AdminNav({ onSignOut }: { onSignOut: () => void }) {
   }, []);
 
   return (
-    <div className="admin-subnav">
+    <div className="admin-subnav" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
       <div className="admin-subnav-links">
-        <Link href="/admin" className={isActive("/admin") ? "active" : ""}>
-          Dashboard
-        </Link>
-        <Link href="/admin/menu" className={isActive("/admin/menu") ? "active" : ""}>
-          Menu management
-        </Link>
-        <Link href="/admin/promos" className={isActive("/admin/promos") ? "active" : ""}>
-          Promos
-        </Link>
-        <Link href="/admin/ratings" className={isActive("/admin/ratings") ? "active" : ""}>
-          Ratings
-        </Link>
-        <details className="dd admin-settings-dd" ref={settingsRef}>
-          <summary>⚙ Settings</summary>
-          <div className="dd-panel">
-            <Link
-              href="/admin/settings/account"
-              className="dd-item"
-              onClick={() => { if (settingsRef.current) settingsRef.current.open = false; }}
-            >
-              Account settings
+        {activeRole === "admin" ? (
+          <>
+            <Link href="/admin" className={isActive("/admin") ? "active" : ""}>
+              Dashboard
             </Link>
-            <Link
-              href="/admin/settings/outlet"
-              className="dd-item"
-              onClick={() => { if (settingsRef.current) settingsRef.current.open = false; }}
-            >
-              Outlet settings
+            <Link href="/admin/menu" className={isActive("/admin/menu") ? "active" : ""}>
+              Menu management
             </Link>
-            <Link
-              href="/admin/settings/ai"
-              className="dd-item"
-              onClick={() => { if (settingsRef.current) settingsRef.current.open = false; }}
-            >
-              AI settings
+            <Link href="/admin/seating" className={isActive("/admin/seating") ? "active" : ""}>
+              Outlet Seating & Waitlist
             </Link>
-          </div>
-        </details>
+            <Link href="/admin/ratings" className={isActive("/admin/ratings") ? "active" : ""}>
+              Ratings
+            </Link>
+            <details className="dd admin-settings-dd" ref={settingsRef}>
+              <summary>⚙ Settings</summary>
+              <div className="dd-panel">
+                <Link
+                  href="/admin/settings/account"
+                  className="dd-item"
+                  onClick={() => { if (settingsRef.current) settingsRef.current.open = false; }}
+                >
+                  Account settings
+                </Link>
+                <Link
+                  href="/admin/settings/outlet"
+                  className="dd-item"
+                  onClick={() => { if (settingsRef.current) settingsRef.current.open = false; }}
+                >
+                  Outlet settings
+                </Link>
+                <Link
+                  href="/admin/settings/ai"
+                  className="dd-item"
+                  onClick={() => { if (settingsRef.current) settingsRef.current.open = false; }}
+                >
+                  AI settings
+                </Link>
+                <Link
+                  href="/admin/settings/offers"
+                  className="dd-item"
+                  onClick={() => { if (settingsRef.current) settingsRef.current.open = false; }}
+                >
+                  Offer list
+                </Link>
+              </div>
+            </details>
+          </>
+        ) : (
+          <>
+            <Link href="/admin/seating" className={isActive("/admin/seating") ? "active" : ""}>
+              Outlet Seating & Waitlist
+            </Link>
+            <Link href="/admin/settings/outlet" className={isActive("/admin/settings/outlet") ? "active" : ""}>
+              Outlet Settings
+            </Link>
+          </>
+        )}
       </div>
-      <button className="btn btn-small btn-secondary" onClick={onSignOut}>
-        Sign out
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem" }}>
+          <span className="text-muted" style={{ fontWeight: "500" }}>Role:</span>
+          <span style={{ padding: "4px 8px", fontSize: "0.8rem", background: "rgba(128, 128, 128, 0.1)", color: "inherit", borderRadius: "4px", fontWeight: "600" }}>
+            {activeRole === "admin" ? "Administrator" : "Restaurant Manager"}
+          </span>
+        </div>
+        <button className="btn btn-small btn-secondary" onClick={onSignOut}>
+          Sign out
+        </button>
+      </div>
     </div>
   );
 }

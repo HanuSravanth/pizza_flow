@@ -5,15 +5,9 @@
 // Read-only — no admin actions here, just the numbers.
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  buildFeedbackDataset,
-  computePizzaRatingSummary,
-  type FeedbackAnalysis,
-  type FeedbackEntryForAi,
-  type RatingSummary,
-} from "@/lib/analytics";
+import { computePizzaRatingSummary } from "@/lib/analytics";
 import { formatDateTime } from "@/lib/format";
-import { getEffectiveAiFeatures, getOrderFeedback, isDemoMode, type OrderFeedbackRecord } from "@/lib/data";
+import { getOrderFeedback, isDemoMode, type OrderFeedbackRecord } from "@/lib/data";
 
 const PAGE_SIZE = 10;
 
@@ -71,8 +65,6 @@ export default function RatingsPage() {
           <div className="stat-value">{summary.pizzas.length}</div>
         </div>
       </div>
-
-      <FeedbackAiPanel feedback={feedback} summary={summary} />
 
       <div className="card">
         <h2>Top rated pizzas</h2>
@@ -180,119 +172,5 @@ export default function RatingsPage() {
         )}
       </div>
     </>
-  );
-}
-
-// ------------------------------------------------------- AI feedback analyst
-// The LLM clusters recent feedback into themes but may only cite entries by
-// index; the route validates the indexes and this panel recomputes every count
-// and pulls every quote from the actual entries — the model never states a
-// number the app didn't verify.
-
-function FeedbackAiPanel({ feedback, summary }: { feedback: OrderFeedbackRecord[]; summary: RatingSummary }) {
-  const [enabled, setEnabled] = useState(false);
-  const [analysis, setAnalysis] = useState<FeedbackAnalysis | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    getEffectiveAiFeatures()
-      .then((features) => setEnabled(features.feedback))
-      .catch(() => {});
-  }, []);
-
-  const dataset = useMemo(() => buildFeedbackDataset(feedback), [feedback]);
-  const byIndex = useMemo(() => new Map(dataset.map((e) => [e.index, e])), [dataset]);
-
-  if (!enabled || feedback.length === 0) return null;
-
-  async function analyse() {
-    setBusy(true);
-    setError("");
-    try {
-      const response = await fetch("/api/ai/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          entries: dataset,
-          stats: {
-            overallAvgRating: summary.overallAvgRating,
-            overallRatingCount: summary.overallRatingCount,
-            feedbackCount: summary.feedbackCount,
-          },
-        }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Could not analyse the feedback.");
-      setAnalysis(payload.analysis);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not analyse the feedback — try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div className="card" style={{ marginBottom: 16 }}>
-      <h2>What the feedback is telling you</h2>
-      <p className="page-sub">
-        Groups the {dataset.length} most recent submissions into themes — what to fix and why it
-        probably happens. For your eyes only; nothing here is sent to any customer. Counts and
-        quotes are verified against the actual entries.
-      </p>
-
-      {!analysis && (
-        <button className="btn" onClick={analyse} disabled={busy}>
-          {busy ? "Analysing…" : "Analyse the feedback"}
-        </button>
-      )}
-      {error && <p className="error-text" style={{ marginTop: 10 }}>{error}</p>}
-
-      {analysis && (
-        <>
-          {analysis.themes.length === 0 && (
-            <p className="page-sub">{analysis.note || "Not enough feedback yet to find reliable themes."}</p>
-          )}
-          {analysis.themes.map((theme, idx) => {
-            const supporting = theme.entryIndexes
-              .map((i) => byIndex.get(i))
-              .filter((e): e is FeedbackEntryForAi => Boolean(e));
-            const quotes = supporting.filter((e) => e.comment).slice(0, 2);
-            return (
-              <div key={idx} className="theme-block">
-                <p style={{ margin: "0 0 4px" }}>
-                  <span className={`sentiment sentiment-${theme.sentiment}`}>{theme.sentiment}</span>{" "}
-                  <strong>{theme.title}</strong>{" "}
-                  <span className="page-sub" style={{ fontSize: 12.5 }}>
-                    — {supporting.length} of {dataset.length} entries
-                  </span>
-                </p>
-                {quotes.map((q) => (
-                  <p key={q.index} className="quote">
-                    “{q.comment}” <span style={{ fontStyle: "normal" }}>({q.dayOfWeek} {q.hour})</span>
-                  </p>
-                ))}
-                {theme.rootCause && (
-                  <p className="page-sub" style={{ margin: "4px 0" }}>
-                    <strong>Likely cause:</strong> {theme.rootCause}
-                  </p>
-                )}
-                {theme.suggestedAction && (
-                  <p className="page-sub" style={{ margin: "4px 0" }}>
-                    <strong>Try this week:</strong> {theme.suggestedAction}
-                  </p>
-                )}
-              </div>
-            );
-          })}
-          {analysis.themes.length > 0 && analysis.note && (
-            <p className="page-sub" style={{ marginTop: 10 }}>{analysis.note}</p>
-          )}
-          <button className="btn btn-small btn-secondary" style={{ marginTop: 12 }} onClick={analyse} disabled={busy}>
-            {busy ? "Analysing…" : "Analyse again"}
-          </button>
-        </>
-      )}
-    </div>
   );
 }
