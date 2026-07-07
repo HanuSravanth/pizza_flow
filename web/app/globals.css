@@ -396,6 +396,9 @@ label { font-weight: 600; font-size: 13px; display: block; margin-bottom: 4px; }
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
 }
+/* On solid brand-red buttons the default red companion star would vanish into the background. */
+.btn:not(.btn-secondary) .ai-sparkle { color: #ffd25e; }
+.btn:not(.btn-secondary) .ai-sparkle::after { color: #ffb3ab; }
 .ai-input-row { display: flex; gap: 8px; margin-top: 8px; }
 .ai-input-row input { flex: 1; }
 .ai-note { font-size: 13px; margin-top: 8px; }

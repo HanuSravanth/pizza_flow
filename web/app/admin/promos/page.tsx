@@ -439,7 +439,8 @@ function Composer({
       </div>
 
       <button className="btn" style={{ marginTop: 16 }} onClick={generate} disabled={busy || !canGenerate}>
-        {busy ? "Writing…" : draft ? "Write it again" : "Write the banner"}
+        {busy ? "Writing…" : draft ? "Write it again" : "Write the banner"}{" "}
+        <span className="ai-sparkle" aria-hidden="true">✦</span>
       </button>
 
       {error && <p className="error-text" style={{ marginTop: 10 }}>{error}</p>}

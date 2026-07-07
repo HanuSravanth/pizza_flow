@@ -243,7 +243,8 @@ function FeedbackAiPanel({ feedback, summary }: { feedback: OrderFeedbackRecord[
 
       {!analysis && (
         <button className="btn" onClick={analyse} disabled={busy}>
-          {busy ? "Analysing…" : "Analyse the feedback"}
+          {busy ? "Analysing…" : "Analyse the feedback"}{" "}
+          <span className="ai-sparkle" aria-hidden="true">✦</span>
         </button>
       )}
       {error && <p className="error-text" style={{ marginTop: 10 }}>{error}</p>}
@@ -289,7 +290,8 @@ function FeedbackAiPanel({ feedback, summary }: { feedback: OrderFeedbackRecord[
             <p className="page-sub" style={{ marginTop: 10 }}>{analysis.note}</p>
           )}
           <button className="btn btn-small btn-secondary" style={{ marginTop: 12 }} onClick={analyse} disabled={busy}>
-            {busy ? "Analysing…" : "Analyse again"}
+            {busy ? "Analysing…" : "Analyse again"}{" "}
+            <span className="ai-sparkle" aria-hidden="true">✦</span>
           </button>
         </>
       )}
