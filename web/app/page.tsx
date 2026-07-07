@@ -369,7 +369,19 @@ function OrderFlow({
         }
         next[update.cartIndex] = { ...line, toppings };
       }
-      return [...next, ...lines];
+      // Same base + pizza + toppings should bump one line's quantity rather
+      // than appear as separate rows — both against what's already in the
+      // cart and among multiple identical pizzas the assistant drafts at once.
+      for (const line of lines) {
+        const sig = lineSignature(line);
+        const existingIndex = next.findIndex((l) => lineSignature(l) === sig);
+        if (existingIndex >= 0) {
+          next[existingIndex] = { ...next[existingIndex], quantity: next[existingIndex].quantity + line.quantity };
+        } else {
+          next.push(line);
+        }
+      }
+      return next;
     });
     return true;
   }
@@ -916,6 +928,11 @@ interface CartUpdate {
   cartIndex: number;
   addToppingIds: string[];
   removeToppingIds: string[];
+}
+
+/** Identifies a cart line by its customization, ignoring quantity, so identical pizzas can be merged. */
+function lineSignature(line: CartLine): string {
+  return [line.base.id, line.pizza.id, ...line.toppings.map((t) => t.id).sort()].join("|");
 }
 
 function AiAssistant({
