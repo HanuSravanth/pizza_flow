@@ -21,6 +21,7 @@ export interface OrderAggregates {
   byTable: Record<string, { orders: number; revenue: number }>; // "Table 5"
   byHour: Record<string, number>; // "18:00" -> order count
   byDate: Record<string, { orders: number; revenue: number }>; // "2025-07-05"
+  pizzasSoldByDayOfWeek: Record<string, Record<string, number>>; // day -> pizza name -> units
   discountedOrderCount: number;
 }
 
@@ -42,6 +43,7 @@ export function computeAggregates(orders: CompletedOrder[]): OrderAggregates {
     byTable: {},
     byHour: {},
     byDate: {},
+    pizzasSoldByDayOfWeek: {},
     discountedOrderCount: 0,
   };
 
@@ -75,9 +77,11 @@ export function computeAggregates(orders: CompletedOrder[]): OrderAggregates {
     dateAgg.orders += 1;
     dateAgg.revenue += revenue;
 
+    const pizzasByDay = (agg.pizzasSoldByDayOfWeek[day] ??= {});
     for (const line of order.lines) {
       agg.pizzasSold[line.pizzaName] = (agg.pizzasSold[line.pizzaName] ?? 0) + line.quantity;
       agg.basesSold[line.baseName] = (agg.basesSold[line.baseName] ?? 0) + line.quantity;
+      pizzasByDay[line.pizzaName] = (pizzasByDay[line.pizzaName] ?? 0) + line.quantity;
       for (const topping of line.toppingNames) {
         agg.toppingsSold[topping] = (agg.toppingsSold[topping] ?? 0) + line.quantity;
       }

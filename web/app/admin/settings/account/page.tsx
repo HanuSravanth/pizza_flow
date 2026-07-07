@@ -88,15 +88,6 @@ export default function AccountSettingsPage() {
           </button>
         </form>
       </div>
-
-      <div className="card" style={{ maxWidth: 420, marginTop: 16 }}>
-        <h3>Add another admin</h3>
-        <p className="page-sub">
-          There is no public signup — admin accounts are created from the command line, which
-          keeps the deployed app from ever holding a credential that can create logins:
-        </p>
-        <code className="code-block">npm run admin:create -- &lt;email&gt; &lt;password&gt;</code>
-      </div>
     </>
   );
 }

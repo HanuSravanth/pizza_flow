@@ -1,12 +1,12 @@
 // POST /api/ai/insights — Owner Insights Copilot.
-// Body: { question: string, aggregates: OrderAggregates }
-// The aggregates are computed deterministically from the orders table;
-// the LLM only narrates them. It never touches the database.
+// Body: { question: string, aggregates: OrderAggregates, ratings?: RatingSummary, promoCodes?: PromoCodeStats[] }
+// All of it is computed deterministically from the database (analytics.ts);
+// the LLM only narrates it. It never touches the database.
 
 import { NextResponse } from "next/server";
 import { getAiModel, getAiPrompt, getOpenRouterApiKey, isAiFeatureEnabled } from "@/lib/data";
 import { AiUnavailableError, chatCompletion } from "@/lib/openrouter";
-import type { OrderAggregates } from "@/lib/analytics";
+import type { OrderAggregates, PromoCodeStats, RatingSummary } from "@/lib/analytics";
 
 export async function POST(request: Request) {
   if (!(await isAiFeatureEnabled("insights"))) {
@@ -16,7 +16,12 @@ export async function POST(request: Request) {
     );
   }
 
-  let body: { question?: string; aggregates?: OrderAggregates };
+  let body: {
+    question?: string;
+    aggregates?: OrderAggregates;
+    ratings?: RatingSummary;
+    promoCodes?: PromoCodeStats[];
+  };
   try {
     body = await request.json();
   } catch {
@@ -38,7 +43,9 @@ export async function POST(request: Request) {
     const answer = await chatCompletion({
       system: prompt
         .replace("{{GENERATED_AT}}", aggregates.generatedAt)
-        .replace("{{AGGREGATES}}", JSON.stringify(aggregates, null, 1)),
+        .replace("{{AGGREGATES}}", JSON.stringify(aggregates, null, 1))
+        .replace("{{RATINGS}}", JSON.stringify(body.ratings ?? "no ratings data provided", null, 1))
+        .replace("{{PROMO_CODES}}", JSON.stringify(body.promoCodes ?? "no promo code data provided", null, 1)),
       user: question,
       maxTokens: 400,
       model,

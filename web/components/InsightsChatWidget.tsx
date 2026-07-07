@@ -13,8 +13,9 @@
 // independently in admin settings.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { computeAggregates, todaysOrders } from "@/lib/analytics";
-import { getOrders } from "@/lib/data";
+import { computeAggregates, computePizzaRatingSummary, computePromoCodeStats, todaysOrders } from "@/lib/analytics";
+import { getOrderFeedback, getOrders, getPromoCodes } from "@/lib/data";
+import type { OrderFeedbackRecord, PromoCode } from "@/lib/data";
 import { onDigestRequested } from "@/lib/insightsChatBus";
 import type { CompletedOrder } from "@/lib/types";
 
@@ -29,18 +30,28 @@ export default function InsightsChatWidget({
 }) {
   const [open, setOpen] = useState(false);
   const [orders, setOrders] = useState<CompletedOrder[] | null>(null);
+  const [feedback, setFeedback] = useState<OrderFeedbackRecord[] | null>(null);
+  const [promoCodes, setPromoCodes] = useState<PromoCode[] | null>(null);
   const [loadError, setLoadError] = useState("");
   const [question, setQuestion] = useState("");
   const [log, setLog] = useState<ChatEntry[]>([]);
   const [busy, setBusy] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
-  // A ref mirror of `orders` so async actions (the digest, triggered while the
-  // popup may still be closed) read the latest value without a stale closure.
+  // Ref mirrors of the loaded data so async actions (the digest, triggered
+  // while the popup may still be closed) read the latest value without a
+  // stale closure.
   const ordersRef = useRef<CompletedOrder[] | null>(null);
+  const feedbackRef = useRef<OrderFeedbackRecord[] | null>(null);
+  const promoCodesRef = useRef<PromoCode[] | null>(null);
 
-  // All-time aggregates power the free-form copilot; the digest computes its
-  // own today-only slice on demand (see runDigest).
+  // All-time aggregates, ratings and promo performance power the free-form
+  // copilot; the digest computes its own today-only slice on demand (see runDigest).
   const aggregates = useMemo(() => (orders ? computeAggregates(orders) : null), [orders]);
+  const ratings = useMemo(() => (feedback ? computePizzaRatingSummary(feedback) : null), [feedback]);
+  const promoStats = useMemo(
+    () => (orders && promoCodes ? computePromoCodeStats(orders, promoCodes) : null),
+    [orders, promoCodes]
+  );
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -55,11 +66,24 @@ export default function InsightsChatWidget({
     return loaded;
   }, []);
 
+  /** Load ratings + promo code history once, alongside orders, for the free-form copilot. */
+  const ensureExtras = useCallback(async (): Promise<void> => {
+    const [fb, promos] = await Promise.all([
+      feedbackRef.current ?? getOrderFeedback(),
+      promoCodesRef.current ?? getPromoCodes(),
+    ]);
+    feedbackRef.current = fb;
+    promoCodesRef.current = promos;
+    setFeedback(fb);
+    setPromoCodes(promos);
+  }, []);
+
   // Warm the data as soon as the copilot is opened, so the first question is snappy.
   useEffect(() => {
-    if (!open || ordersRef.current || loadError) return;
-    ensureOrders().catch((error: Error) => setLoadError(error.message));
-  }, [open, loadError, ensureOrders]);
+    if (!open || loadError) return;
+    if (ordersRef.current && feedbackRef.current && promoCodesRef.current) return;
+    Promise.all([ensureOrders(), ensureExtras()]).catch((error: Error) => setLoadError(error.message));
+  }, [open, loadError, ensureOrders, ensureExtras]);
 
   async function ask(text?: string) {
     const q = (text ?? question).trim();
@@ -71,7 +95,7 @@ export default function InsightsChatWidget({
       const response = await fetch("/api/ai/insights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, aggregates }),
+        body: JSON.stringify({ question: q, aggregates, ratings, promoCodes: promoStats }),
       });
       const payload = await response.json();
       setLog((prev) => [
@@ -183,7 +207,11 @@ export default function InsightsChatWidget({
                 <div className="chat-empty">
                   <p>Hi Rajan! Ask me anything about your sales. Try one of these:</p>
                   <div className="chat-suggest-row">
-                    {["Which pizza sells most?", "What did discounts cost me?", "Which table orders the most?"].map(
+                    {[
+                      "Which pizza sells most on weekends?",
+                      "Which pizza is rated the worst?",
+                      "How are my promo codes performing?",
+                    ].map(
                       (s) => (
                         <button key={s} className="chat-suggest" onClick={() => ask(s)}>
                           {s}
